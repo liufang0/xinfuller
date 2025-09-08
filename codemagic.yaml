@@ -8,7 +8,7 @@ workflows:
       - name: 更新 CocoaPods 源
         script: pod repo update
       - name: iOS 依赖
-        script: cd ios && pod install
+        script: cd ios && pod install --repo-update
       - name: 清理 Flutter 构建缓存
         script: flutter clean
       - name: 获取 Dart 依赖
