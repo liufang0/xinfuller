@@ -6,24 +6,25 @@ workflows:
     environment:
       flutter: 3.27.4
       xcode: 16.1
+      # 1. 所有签名相关信息通过变量传递（在 Codemagic 控制台配置）
       vars:
         TENANT_NAME: "default-tenant"
         IOS_BUNDLE_ID: "io.openim.flutter.demoo"
         IOS_NOTIFICATION_BUNDLE_ID: "io.openim.flutter.demoo.NotificationService"
-      # 关键修复：签名配置必须放在 environment.ios 下
-      ios:
-        certificates:
-          distribution: ${{ IOS_DISTRIBUTION_CERTIFICATE }}  # 分发证书（固定键名）
-          push: ${{ IOS_PUSH_CERTIFICATE }}                  # 推送证书（固定键名）
-        provisioning_profiles:
-          # 配置文件需与 Bundle ID 一一对应
-          ${{ IOS_BUNDLE_ID }}: ${{ IOS_MAIN_PROFILE }}
-          ${{ IOS_NOTIFICATION_BUNDLE_ID }}: ${{ IOS_NOTIFICATION_PROFILE }}
+        # 签名变量（需在 Codemagic 控制台添加加密值）
+        IOS_SIGNING_CERT_P12: ${{ IOS_SIGNING_CERT_P12 }}  # 证书 P12 文件 Base64
+        IOS_SIGNING_CERT_PASSWORD: ${{ IOS_SIGNING_CERT_PASSWORD }}  # 证书密码
+        IOS_MAIN_PROFILE: ${{ IOS_MAIN_PROFILE }}  # 主应用配置文件 Base64
+        IOS_NOTIFICATION_PROFILE: ${{ IOS_NOTIFICATION_PROFILE }}  # 通知扩展配置文件 Base64
+        IOS_MAIN_PROFILE_NAME: ${{ IOS_MAIN_PROFILE_NAME }}  # 主配置文件名称
+        IOS_NOTIFICATION_PROFILE_NAME: ${{ IOS_NOTIFICATION_PROFILE_NAME }}  # 扩展配置文件名称
     scripts:
       - name: 清理 Flutter 缓存
         script: flutter clean
+
       - name: 获取 Dart 依赖
         script: flutter pub get
+
       - name: 准备 iOS 依赖
         script: |
           cd ios
@@ -31,6 +32,24 @@ workflows:
           pod repo update
           pod install --repo-update
           cd ..
+
+      - name: 导入 iOS 签名证书和配置文件（关键：替代 environment.ios 配置）
+        script: |
+          # 1. 导入签名证书到系统钥匙串
+          echo "${{ IOS_SIGNING_CERT_P12 }}" | base64 --decode > signing_cert.p12
+          security create-keychain -p "" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "" build.keychain
+          security import signing_cert.p12 -k build.keychain -P "${{ IOS_SIGNING_CERT_PASSWORD }}" -T /usr/bin/codesign -T /Applications/Xcode-16.1.app/Contents/Developer/usr/bin/xcodebuild
+          security set-key-partition-list -S apple-tool:,apple: -k "" build.keychain
+
+          # 2. 导入配置文件到 Xcode 配置目录
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles/
+          # 主应用配置文件
+          echo "${{ IOS_MAIN_PROFILE }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/main_profile.mobileprovision
+          # 通知扩展配置文件
+          echo "${{ IOS_NOTIFICATION_PROFILE }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/notification_profile.mobileprovision
+
       - name: 生成 ExportOptions.plist
         script: |
           cat > ios/ExportOptions.plist << EOF
@@ -60,9 +79,13 @@ workflows:
           </dict>
           </plist>
           EOF
+
       - name: 构建并归档 iOS 应用
         script: |
+          # 1. Flutter 构建（不提前签名）
           flutter build ios --release --no-codesign --bundle-suffix ""
+
+          # 2. Xcode 归档（指定钥匙串和签名信息）
           cd ios
           xcodebuild archive \
             -workspace Runner.xcworkspace \
@@ -70,13 +93,17 @@ workflows:
             -configuration Release \
             -archivePath ../build/ios/archive/Runner.xcarchive \
             -allowProvisioningUpdates \
-            CODE_SIGN_IDENTITY="${{ IOS_DISTRIBUTION_CERTIFICATE_NAME }}" \
-            PROVISIONING_PROFILE_SPECIFIER="${{ IOS_MAIN_PROFILE }}"
+            CODE_SIGN_KEYCHAIN=~/build.keychain \  # 使用导入的钥匙串
+            CODE_SIGN_IDENTITY="iPhone Distribution" \  # 证书类型
+            PROVISIONING_PROFILE_SPECIFIER="${{ IOS_MAIN_PROFILE_NAME }}"  # 配置文件名称
+
+          # 3. 导出 IPA
           xcodebuild -exportArchive \
             -archivePath ../build/ios/archive/Runner.xcarchive \
             -exportPath ../build/ios/ipa \
             -exportOptionsPlist ExportOptions.plist
           cd ..
+
     artifacts:
       - build/ios/ipa/*.ipa
       - build/ios/archive/*.xcarchive
