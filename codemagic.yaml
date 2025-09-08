@@ -9,8 +9,6 @@ workflows:
         script: flutter clean
       - name: 获取 Dart 依赖
         script: flutter pub get
-      - name: iOS 依赖
-        script: cd ios && pod install
       - name: 构建 iOS
         script: flutter build ios --release
     artifacts:
