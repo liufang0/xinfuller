@@ -24,7 +24,7 @@ workflows:
     name: TOIM
     labels:
       - QA
-      - ${TENANT_NAME}
+      - ${{ TENANT_NAME || 'default-tenant' }}  # 使用默认值避免出现 none
     instance_type: mac_mini_m2
     max_build_duration: 60
     inputs:
@@ -36,6 +36,7 @@ workflows:
         - group_name
       vars:
         PUBLIC_ENV_VAR: "value here"
+        TENANT_NAME: "your-tenant-name"  # 明确定义变量
       flutter: stable
       xcode: latest
     cache:
@@ -51,7 +52,6 @@ workflows:
       cancel_previous_builds: false
     scripts:
       - echo "Hello, ${{ inputs.name }}"
-      # 添加实际需要执行的脚本
       - flutter clean
       - flutter pub get
       - flutter build appbundle --release
