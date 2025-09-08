@@ -6,40 +6,72 @@ workflows:
     environment:
       flutter: 3.27.4
       xcode: 16.1
+      # 确保环境变量正确配置
+      vars:
+        TENANT_NAME: "default-tenant"  # 提供默认租户名
     scripts:
-      - name: 清理 Flutter 构建缓存
+      - name: 清理 Flutter 缓存
         script: flutter clean
+      
       - name: 获取 Dart 依赖
         script: flutter pub get
-      - name: 更新 CocoaPods 源
-        script: pod repo update
-      - name: 构建 iOS
-        script: flutter build ios --release
+      
+      - name: 准备 iOS 环境
+        script: |
+          # 进入 iOS 目录
+          cd ios
+          
+          # 彻底清理旧依赖
+          rm -rf Podfile.lock
+          rm -rf Pods
+          rm -rf ~/Library/Caches/CocoaPods
+          rm -rf ~/.cocoapods/repos
+          
+          # 更新 CocoaPods 仓库（关键步骤）
+          pod repo update
+          
+          # 安装依赖并强制更新
+          pod install --repo-update
+          
+          # 返回项目根目录
+          cd ..
+      
+      - name: 构建 iOS 应用
+        script: |
+          # 构建 Release 版本 IPA
+          flutter build ios --release --no-codesign
+          
+          # 打包 IPA（如果需要）
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive
+          xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist ios/ExportOptions.plist
+
     artifacts:
       - build/ios/ipa/*.ipa
+      - build/ios/archive/*.xcarchive
 
   my-workflow:
     name: TOIM
     labels:
       - QA
-      - ${{ TENANT_NAME || 'default-tenant' }}  # 使用默认值避免出现 none
+      - ${{ TENANT_NAME }}
     instance_type: mac_mini_m2
     max_build_duration: 60
     inputs:
       name:
-        description: Input description
+        description: 输入名称
         default: Codemagic
     environment:
       groups:
         - group_name
       vars:
         PUBLIC_ENV_VAR: "value here"
-        TENANT_NAME: "your-tenant-name"  # 明确定义变量
+        TENANT_NAME: "default-tenant"
       flutter: stable
       xcode: latest
     cache:
       cache_paths:
         - ~/.pub-cache
+        - ios/Pods
     triggering:
       events:
         - push
@@ -52,6 +84,7 @@ workflows:
       - echo "Hello, ${{ inputs.name }}"
       - flutter clean
       - flutter pub get
+      - cd ios && pod repo update && pod install --repo-update && cd ..
       - flutter build appbundle --release
     artifacts:
       - build/**/outputs/bundle/**/*.aab
@@ -60,4 +93,4 @@ workflows:
         recipients:
           - name@example.com
       scripts:
-        - echo 'Post-publish script'
+        - echo '发布后脚本执行'
