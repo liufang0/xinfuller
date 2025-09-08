@@ -37,14 +37,11 @@ workflows:
           # 使用 Shell 变量格式 $变量名
           echo "$IOS_SIGNING_CERT_P12" | base64 --decode > signing_cert.p12
           security create-keychain -p "" build.keychain
-          security default-keychain -s build.keychain
           security unlock-keychain -p "" build.keychain
-          security import signing_cert.p12 -k build.keychain -P "$IOS_SIGNING_CERT_PASSWORD" -T /usr/bin/codesign -T /Applications/Xcode-16.1.app/Contents/Developer/usr/bin/xcodebuild
-          security set-key-partition-list -S apple-tool:,apple: -k "" build.keychain
+          security import signing_cert.p12 -k build.keychain -P "$IOS_SIGNING_CERT_PASSWORD" -T /usr/bin/codesign
 
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles/
           echo "$IOS_MAIN_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/main_profile.mobileprovision
-          echo "$IOS_NOTIFICATION_PROFILE" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/notification_profile.mobileprovision
 
       - name: 生成 ExportOptions.plist（修复变量语法）
         script: |
