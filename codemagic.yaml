@@ -6,49 +6,99 @@ workflows:
     environment:
       flutter: 3.27.4
       xcode: 16.1
-      # 确保环境变量正确配置
+      # 1. 配置 iOS 签名必需的环境变量（需在 Codemagic 控制台添加实际值）
       vars:
-        TENANT_NAME: "default-tenant"  # 提供默认租户名
+        TENANT_NAME: "default-tenant"
+        IOS_BUNDLE_ID: "io.openim.flutter.demoo"  # 主应用 Bundle ID
+        IOS_NOTIFICATION_BUNDLE_ID: "io.openim.flutter.demoo.NotificationService"  # 通知扩展 Bundle ID
+      # （关键）引用 Codemagic 中存储的签名文件（需提前在 Codemagic 控制台上传）
+      certificates:
+        ios_distribution: ${{ IOS_DISTRIBUTION_CERTIFICATE }}  # 分发证书（或开发证书）
+        ios_push: ${{ IOS_PUSH_CERTIFICATE }}  # 推送证书（通知扩展需）
+      provisioning_profiles:
+        ${{ IOS_BUNDLE_ID }}: ${{ IOS_MAIN_PROFILE }}  # 主应用配置文件
+        ${{ IOS_NOTIFICATION_BUNDLE_ID }}: ${{ IOS_NOTIFICATION_PROFILE }}  # 通知扩展配置文件
     scripts:
       - name: 清理 Flutter 缓存
         script: flutter clean
-      
+
       - name: 获取 Dart 依赖
         script: flutter pub get
-      
-      - name: 准备 iOS 环境
+
+      - name: 准备 iOS 依赖（修复 Pod 问题）
         script: |
-          # 进入 iOS 目录
           cd ios
-          
-          # 彻底清理旧依赖
-          rm -rf Podfile.lock
-          rm -rf Pods
-          rm -rf ~/Library/Caches/CocoaPods
-          rm -rf ~/.cocoapods/repos
-          
-          # 更新 CocoaPods 仓库（关键步骤）
+          # 彻底清理旧 Pod 依赖
+          rm -rf Podfile.lock Pods ~/Library/Caches/CocoaPods
+          # 更新 CocoaPods 仓库并安装依赖
           pod repo update
-          
-          # 安装依赖并强制更新
           pod install --repo-update
-          
-          # 返回项目根目录
           cd ..
-      
-      - name: 构建 iOS 应用
+
+      - name: 生成 ExportOptions.plist（解决文件缺失）
         script: |
-          # 构建 Release 版本 IPA
-          flutter build ios --release --no-codesign
-          
-          # 打包 IPA（如果需要）
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -archivePath build/ios/archive/Runner.xcarchive archive
-          xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist ios/ExportOptions.plist
+          # 在 ios 目录下生成导出配置文件
+          cat > ios/ExportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <!-- 导出类型：app-store/ad-hoc/enterprise/development -->
+            <key>method</key>
+            <string>ad-hoc</string>  <!-- 根据实际需求修改（如发布到 App Store 用 app-store） -->
+            <!-- 签名配置：使用指定的配置文件 -->
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${{ IOS_BUNDLE_ID }}</key>
+              <string>${{ IOS_MAIN_PROFILE_NAME }}</string>  <!-- 配置文件名称（不是 ID） -->
+              <key>${{ IOS_NOTIFICATION_BUNDLE_ID }}</key>
+              <string>${{ IOS_NOTIFICATION_PROFILE_NAME }}</string>  <!-- 通知扩展配置文件名称 -->
+            </dict>
+            <!-- 其他必需配置 -->
+            <key>signingCertificate</key>
+            <string>iPhone Distribution</string>  <!-- 证书类型（开发证书用 iPhone Developer） -->
+            <key>signingStyle</key>
+            <string>manual</string>  <!-- 手动签名（对应 Codemagic 配置的证书） -->
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>uploadBitcode</key>
+            <false/>  <!-- 非 App Store 导出可设为 false -->
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: 构建并归档 iOS 应用（修复签名问题）
+        script: |
+          # 1. 用 Flutter 构建 Release 版本（生成 Xcode 项目文件）
+          flutter build ios --release --no-codesign --bundle-suffix ""  # --no-codesign 避免 Flutter 提前签名冲突
+
+          # 2. 进入 ios 目录执行 Xcode 归档（指定签名配置）
+          cd ios
+          xcodebuild archive \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -archivePath ../build/ios/archive/Runner.xcarchive \
+            # 关键：允许 Xcode 使用 Codemagic 提供的签名文件
+            -allowProvisioningUpdates \
+            CODE_SIGN_IDENTITY="${{ IOS_DISTRIBUTION_CERTIFICATE_NAME }}" \  # 证书名称
+            PROVISIONING_PROFILE_SPECIFIER="${{ IOS_MAIN_PROFILE }}"  # 主应用配置文件 ID
+
+          # 3. 导出 IPA（使用刚生成的 ExportOptions.plist）
+          xcodebuild -exportArchive \
+            -archivePath ../build/ios/archive/Runner.xcarchive \
+            -exportPath ../build/ios/ipa \
+            -exportOptionsPlist ExportOptions.plist  # 引用生成的配置文件
+          cd ..
 
     artifacts:
+      # 输出 IPA 和归档文件（便于查看和下载）
       - build/ios/ipa/*.ipa
       - build/ios/archive/*.xcarchive
 
+  # 保留原 my-workflow（如需使用可参考上述逻辑修复）
   my-workflow:
     name: TOIM
     labels:
