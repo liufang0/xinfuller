@@ -2,15 +2,12 @@ workflows:
   ios-build:
     name: iOS Build
     environment:
-      flutter: stable
-      xcode: latest
+      flutter: 3.27.4
+      xcode: 16.1
     scripts:
-      - name: Post-clone 更新 CocoaPods 源
-        script: |
-          echo '=== pod repo update start ==='
-          pod repo update
-          echo '=== pod repo update end ==='
-      - name: Flutter 依赖
+      - name: 清理 Flutter 构建缓存
+        script: flutter clean
+      - name: 获取 Dart 依赖
         script: flutter pub get
       - name: iOS 依赖
         script: cd ios && pod install
