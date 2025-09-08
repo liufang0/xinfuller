@@ -7,19 +7,19 @@ workflows:
       flutter: 3.27.4
       xcode: 16.1
     scripts:
-      - name: 更新 CocoaPods 源
-        script: pod repo update
-      - name: iOS 依赖
-        script: cd ios && pod install --repo-update
       - name: 清理 Flutter 构建缓存
         script: flutter clean
       - name: 获取 Dart 依赖
         script: flutter pub get
+      - name: 更新 CocoaPods 源
+        script: pod repo update
+      - name: iOS 依赖
+        script: cd ios && pod install --repo-update
       - name: 构建 iOS
         script: flutter build ios --release
     artifacts:
       - build/ios/ipa/*.ipa
-workflows:
+
   my-workflow:
     name: TOIM
     labels:
@@ -51,7 +51,10 @@ workflows:
       cancel_previous_builds: false
     scripts:
       - echo "Hello, ${{ inputs.name }}"
-      - ...
+      # 添加实际需要执行的脚本
+      - flutter clean
+      - flutter pub get
+      - flutter build appbundle --release
     artifacts:
       - build/**/outputs/bundle/**/*.aab
     publishing:
