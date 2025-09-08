@@ -6,7 +6,9 @@ workflows:
       xcode: 16.1
     scripts:
       - name: 更新 CocoaPods 源
-        script: pod repo update 
+        script: pod repo update
+      - name: iOS 依赖
+        script: cd ios && pod install
       - name: 清理 Flutter 构建缓存
         script: flutter clean
       - name: 获取 Dart 依赖
