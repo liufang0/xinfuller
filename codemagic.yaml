@@ -10,12 +10,15 @@ workflows:
         TENANT_NAME: "default-tenant"
         IOS_BUNDLE_ID: "io.openim.flutter.demoo"
         IOS_NOTIFICATION_BUNDLE_ID: "io.openim.flutter.demoo.NotificationService"
-      certificates:
-        ios_distribution: ${{ IOS_DISTRIBUTION_CERTIFICATE }}
-        ios_push: ${{ IOS_PUSH_CERTIFICATE }}
-      provisioning_profiles:
-        ${{ IOS_BUNDLE_ID }}: ${{ IOS_MAIN_PROFILE }}
-        ${{ IOS_NOTIFICATION_BUNDLE_ID }}: ${{ IOS_NOTIFICATION_PROFILE }}
+      # 关键修复：签名配置必须放在 environment.ios 下
+      ios:
+        certificates:
+          distribution: ${{ IOS_DISTRIBUTION_CERTIFICATE }}  # 分发证书（固定键名）
+          push: ${{ IOS_PUSH_CERTIFICATE }}                  # 推送证书（固定键名）
+        provisioning_profiles:
+          # 配置文件需与 Bundle ID 一一对应
+          ${{ IOS_BUNDLE_ID }}: ${{ IOS_MAIN_PROFILE }}
+          ${{ IOS_NOTIFICATION_BUNDLE_ID }}: ${{ IOS_NOTIFICATION_PROFILE }}
     scripts:
       - name: 清理 Flutter 缓存
         script: flutter clean
