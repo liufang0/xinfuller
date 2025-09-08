@@ -13,8 +13,6 @@ workflows:
         script: flutter pub get
       - name: 更新 CocoaPods 源
         script: pod repo update
-      - name: iOS 依赖
-        script: cd ios && pod install --repo-update
       - name: 构建 iOS
         script: flutter build ios --release
     artifacts:
